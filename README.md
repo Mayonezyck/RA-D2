@@ -30,10 +30,11 @@ cp .env.example .env
 ```
 
 Then edit `.env` and set `DISCORD_TOKEN`.
+Optionally set `DISCORD_GUILD_ID` to sync commands instantly to a specific server.
 
 ## Running
 ```bash
-DISCORD_TOKEN=your_token_here python bot.py
+DISCORD_TOKEN=your_token_here DISCORD_GUILD_ID=your_server_id python bot.py
 ```
 
 If you are using `.env`, you can load it with your preferred method (for example, `python -m dotenv run -- python bot.py` if you install `python-dotenv`).
@@ -48,6 +49,7 @@ If you are using `.env`, you can load it with your preferred method (for example
 - `/task remove task_id:<id>`
 - `/task auto enabled:<true|false> channel:<optional>`
 - `/task status`
+- `/channel clear confirm:<true|false>`
 
 ## Notes
 - The schedule loop checks every 30 seconds.

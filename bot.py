@@ -191,7 +191,17 @@ class BotClient(discord.Client):
         self._hourly_task: Optional[asyncio.Task] = None
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
+        guild_id = os.getenv("DISCORD_GUILD_ID")
+        if guild_id:
+            guild = discord.Object(id=int(guild_id))
+            try:
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+            except discord.Forbidden:
+                # Fallback to global sync if guild access fails
+                await self.tree.sync()
+        else:
+            await self.tree.sync()
         self._scheduler_task = asyncio.create_task(self._schedule_loop())
         self._hourly_task = asyncio.create_task(self._hourly_loop())
 
@@ -455,6 +465,57 @@ async def task_status(interaction: discord.Interaction) -> None:
 
 
 client.tree.add_command(task_group)
+
+channel_group = app_commands.Group(name="channel", description="Channel utilities")
+
+
+@channel_group.command(name="clear", description="Clear messages in the current channel")
+@app_commands.describe(confirm="Set to true to confirm clearing this channel")
+async def channel_clear(interaction: discord.Interaction, confirm: bool) -> None:
+    if interaction.channel is None or not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("This command can only be used in a text channel.")
+        return
+
+    if not confirm:
+        await interaction.response.send_message("Confirmation required. Re-run with confirm:true.")
+        return
+
+    await interaction.response.send_message("Clearing messages...", ephemeral=True)
+    try:
+        deleted = await interaction.channel.purge()
+        try:
+            await interaction.followup.send(f"Cleared {len(deleted)} messages.")
+        except discord.DiscordException:
+            pass
+    except discord.Forbidden:
+        await interaction.followup.send("Missing permission to manage messages.")
+    except discord.DiscordException:
+        await interaction.followup.send("Failed to clear messages.")
+
+
+client.tree.add_command(channel_group)
+
+
+@client.tree.command(name="sync", description="Force re-sync of commands for this server")
+async def sync_commands(interaction: discord.Interaction) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    perms = interaction.user.guild_permissions
+    if not (interaction.user.id == interaction.guild.owner_id or perms.manage_guild):
+        await interaction.response.send_message("Missing permission: Manage Server.")
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        commands = await client.tree.sync(guild=interaction.guild)
+        names = ", ".join([cmd.name for cmd in commands]) or "none"
+        await interaction.followup.send(f"Synced {len(commands)} commands: {names}", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send("Failed to sync: Missing access.", ephemeral=True)
+    except discord.DiscordException:
+        await interaction.followup.send("Failed to sync commands.", ephemeral=True)
 
 
 def _is_valid_time(value: str) -> bool:
