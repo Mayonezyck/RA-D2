@@ -5,7 +5,10 @@ A minimal Discord bot built in Python that supports slash commands and scheduled
 ## Features
 - Slash command `/ping`
 - Slash command group `/schedule` with `add`, `list`, `remove`
+- Slash command group `/task` with `add`, `list`, `remove`
 - Local JSON-backed schedule store (`schedules.json`)
+- Local JSON-backed checklist store (`tasks.json`)
+- Local JSON config for feature flags (`config.json`)
 - Local time matching (HH:MM, 24-hour)
 
 ## Requirements
@@ -40,11 +43,17 @@ If you are using `.env`, you can load it with your preferred method (for example
 - `/schedule add time:<HH:MM> message:<text> channel:<optional>`
 - `/schedule list`
 - `/schedule remove schedule_id:<id>`
+- `/task add task:<text> urgency:<optional> deadline:<YYYY-MM-DD optional>`
+- `/task list`
+- `/task remove task_id:<id>`
+- `/task auto enabled:<true|false> channel:<optional>`
+- `/task status`
 
 ## Notes
 - The schedule loop checks every 30 seconds.
 - Times are interpreted using the machine's local time.
 - Schedules persist in `schedules.json`.
+- The hourly task list posts at `HH:00` when enabled.
 
 ## Troubleshooting
 - Make sure the bot has permission to send messages in the target channel.
