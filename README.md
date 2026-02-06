@@ -50,6 +50,11 @@ If you are using `.env`, you can load it with your preferred method (for example
 - `/task auto enabled:<true|false> channel:<optional>`
 - `/task status`
 - `/channel clear confirm:<true|false>`
+- `/glossary add word:<text> note:<text>`
+- `/glossary set word:<text> note:<text>`
+- `/glossary get word:<text>`
+- `/glossary list`
+- `/glossary remove word:<text>`
 
 ## Notes
 - The schedule loop checks every 30 seconds.

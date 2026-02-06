@@ -12,6 +12,7 @@ from discord import app_commands
 SCHEDULES_PATH = Path("schedules.json")
 TASKS_PATH = Path("tasks.json")
 CONFIG_PATH = Path("config.json")
+GLOSSARY_PATH = Path("glossary.json")
 CHECK_INTERVAL_SECONDS = 30
 HOURLY_CHECK_SECONDS = 30
 
@@ -150,6 +151,82 @@ class TaskStore:
         return [item for item in self._items if item.guild_id == guild_id]
 
 
+@dataclass
+class GlossaryItem:
+    guild_id: int
+    word: str
+    note: str
+    updated_at: str = ""
+
+
+class GlossaryStore:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._items: List[GlossaryItem] = []
+        self.load()
+
+    def load(self) -> None:
+        if not self.path.exists():
+            self._items = []
+            return
+        data = json.loads(self.path.read_text())
+        self._items = [GlossaryItem(**item) for item in data.get("items", [])]
+
+    def save(self) -> None:
+        data = {"items": [item.__dict__ for item in self._items]}
+        self.path.write_text(json.dumps(data, indent=2))
+
+    def add(self, guild_id: int, word: str, note: str) -> bool:
+        if self.get(guild_id, word) is not None:
+            return False
+        self._items.append(
+            GlossaryItem(
+                guild_id=guild_id,
+                word=word,
+                note=note,
+                updated_at=datetime.now().isoformat(timespec="seconds"),
+            )
+        )
+        self.save()
+        return True
+
+    def set(self, guild_id: int, word: str, note: str) -> None:
+        existing = self.get(guild_id, word)
+        if existing:
+            existing.note = note
+            existing.updated_at = datetime.now().isoformat(timespec="seconds")
+        else:
+            self._items.append(
+                GlossaryItem(
+                    guild_id=guild_id,
+                    word=word,
+                    note=note,
+                    updated_at=datetime.now().isoformat(timespec="seconds"),
+                )
+            )
+        self.save()
+
+    def get(self, guild_id: int, word: str) -> Optional[GlossaryItem]:
+        for item in self._items:
+            if item.guild_id == guild_id and item.word.lower() == word.lower():
+                return item
+        return None
+
+    def remove(self, guild_id: int, word: str) -> bool:
+        before = len(self._items)
+        self._items = [
+            item for item in self._items
+            if not (item.guild_id == guild_id and item.word.lower() == word.lower())
+        ]
+        if len(self._items) == before:
+            return False
+        self.save()
+        return True
+
+    def list_for_guild(self, guild_id: int) -> List[GlossaryItem]:
+        return [item for item in self._items if item.guild_id == guild_id]
+
+
 class ConfigStore:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -281,6 +358,7 @@ class BotClient(discord.Client):
 store = ScheduleStore(SCHEDULES_PATH)
 tasks = TaskStore(TASKS_PATH)
 config = ConfigStore(CONFIG_PATH)
+glossary = GlossaryStore(GLOSSARY_PATH)
 client = BotClient(store, tasks, config)
 
 
@@ -494,6 +572,87 @@ async def channel_clear(interaction: discord.Interaction, confirm: bool) -> None
 
 
 client.tree.add_command(channel_group)
+
+
+glossary_group = app_commands.Group(name="glossary", description="Manage glossary terms")
+
+
+@glossary_group.command(name="add", description="Add a glossary term")
+@app_commands.describe(word="Word or term", note="Note/definition")
+async def glossary_add(interaction: discord.Interaction, word: str, note: str) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    added = glossary.add(interaction.guild.id, word, note)
+    if added:
+        await interaction.response.send_message(f"Added `{word}`.")
+    else:
+        await interaction.response.send_message(f"`{word}` already exists. Use /glossary set.")
+
+
+@glossary_group.command(name="set", description="Set or update a glossary term")
+@app_commands.describe(word="Word or term", note="Note/definition")
+async def glossary_set(interaction: discord.Interaction, word: str, note: str) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    glossary.set(interaction.guild.id, word, note)
+    await interaction.response.send_message(f"Saved `{word}`.")
+
+
+@glossary_group.command(name="get", description="Get a glossary term")
+@app_commands.describe(word="Word or term")
+async def glossary_get(interaction: discord.Interaction, word: str) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    item = glossary.get(interaction.guild.id, word)
+    if item is None:
+        await interaction.response.send_message(f"`{word}` not found.")
+        return
+
+    embed = discord.Embed(title=item.word, description=item.note, color=discord.Color.blurple())
+    await interaction.response.send_message(embed=embed)
+
+
+@glossary_group.command(name="list", description="List all glossary terms")
+async def glossary_list(interaction: discord.Interaction) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    items = glossary.list_for_guild(interaction.guild.id)
+    if not items:
+        await interaction.response.send_message("No glossary terms found.")
+        return
+
+    words = sorted([item.word for item in items], key=lambda w: w.lower())
+    embed = discord.Embed(
+        title="Glossary",
+        description=", ".join(words),
+        color=discord.Color.blurple(),
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+@glossary_group.command(name="remove", description="Remove a glossary term")
+@app_commands.describe(word="Word or term")
+async def glossary_remove(interaction: discord.Interaction, word: str) -> None:
+    if interaction.guild is None:
+        await interaction.response.send_message("This can only be used in a server.")
+        return
+
+    removed = glossary.remove(interaction.guild.id, word)
+    if removed:
+        await interaction.response.send_message(f"Removed `{word}`.")
+    else:
+        await interaction.response.send_message(f"`{word}` not found.")
+
+
+client.tree.add_command(glossary_group)
 
 
 @client.tree.command(name="sync", description="Force re-sync of commands for this server")

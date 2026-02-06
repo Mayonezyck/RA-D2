@@ -5,4 +5,5 @@ __pycache__/
 schedules.json
 tasks.json
 config.json
+glossary.json
 secret
